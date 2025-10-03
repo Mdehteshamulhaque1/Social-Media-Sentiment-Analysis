@@ -4,7 +4,7 @@ import json
 import os
 
 # Backend API URL (agar Flask alag server pe deploy hai)
-API_URL = "http://127.0.0.1:5000"
+API_URL = "https://sentimentanalysis-python.streamlit.app/"
 
 KEYWORDS_FILE = "keywords.json"
 
