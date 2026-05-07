@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sip}
+      POSTGRES_USER: ${POSTGRES_USER:-sip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sip}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-sip} -d ${POSTGRES_DB:-sip}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    command: ['redis-server', '--appendonly', 'yes']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: backend/fastapi_service/Dockerfile
+    env_file: .env
+    environment:
+      PYTHONPATH: /app
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      POSTGRES_DSN: postgresql+psycopg://${POSTGRES_USER:-sip}:${POSTGRES_PASSWORD:-sip}@postgres:5432/${POSTGRES_DB:-sip}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '8000:8000'
+
+  celery:
+    build:
+      context: .
+      dockerfile: backend/fastapi_service/Dockerfile
+    command: celery -A backend.fastapi_service.app.tasks.celery_app.celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      PYTHONPATH: /app
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      POSTGRES_DSN: postgresql+psycopg://${POSTGRES_USER:-sip}:${POSTGRES_PASSWORD:-sip}@postgres:5432/${POSTGRES_DB:-sip}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  django:
+    build:
+      context: .
+      dockerfile: backend/django_admin/Dockerfile
+    env_file: .env
+    environment:
+      PYTHONPATH: /app
+      FASTAPI_BASE_URL: ${FASTAPI_BASE_URL:-http://fastapi:8000/api/v1}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fastapi:
+        condition: service_started
+    ports:
+      - '8001:8001'
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    ports:
+      - '3000:80'
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - frontend
+      - fastapi
+      - django
+    ports:
+      - '80:80'
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  postgres_data:
