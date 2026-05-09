@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -28,9 +29,13 @@ class NLPResult:
 
 class NLPService:
     def __init__(self) -> None:
-        self.transformer = self._load_transformer()
+        self.transformer = None
+        self.enable_transformer = os.getenv("ENABLE_TRANSFORMER_MODEL", "false").lower() in {"1", "true", "yes"}
 
     def _load_transformer(self):
+        if not self.enable_transformer:
+            return None
+
         try:
             from transformers import pipeline  # type: ignore
 
@@ -40,6 +45,9 @@ class NLPService:
 
     def analyze(self, text: str, language: str | None = None) -> dict[str, Any]:
         cleaned = self._preprocess(text)
+        if self.enable_transformer and self.transformer is None:
+            self.transformer = self._load_transformer()
+
         if self.transformer is not None:
             prediction = self.transformer(text[:512])[0]
             label = str(prediction["label"]).lower()

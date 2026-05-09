@@ -26,9 +26,18 @@ class AnalysisStore:
     def __init__(self) -> None:
         self.fallback: list[dict[str, Any]] = []
 
+    def _database_enabled(self) -> bool:
+        return SessionLocal is not None
+
     def save_analysis(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self._database_enabled():
+            self.fallback.append(payload)
+            return payload
+
         try:
-            with SessionLocal() as session:
+            session_factory = SessionLocal
+            assert session_factory is not None
+            with session_factory() as session:
                 record = AnalysisRecord(
                     id=payload["analysis_id"],
                     workspace_id=payload.get("workspace_id"),
@@ -51,70 +60,85 @@ class AnalysisStore:
             return payload
 
     def get_analysis(self, analysis_id: str) -> dict[str, Any] | None:
-        try:
-            with SessionLocal() as session:
-                record = session.get(AnalysisRecord, analysis_id)
-                if record is None:
-                    return None
-                return {
-                    "analysis_id": record.id,
-                    "workspace_id": record.workspace_id,
-                    "text": record.text,
-                    "sentiment": record.sentiment,
-                    "confidence": record.confidence,
-                    "emotion": record.emotion,
-                    "toxicity": record.toxicity,
-                    "sarcasm_hint": record.sarcasm_hint,
-                    "keywords": list(record.keywords or []),
-                    "hashtags": list(record.hashtags or []),
-                    "language": record.language,
-                    "summary": record.summary,
-                    "created_at": record.created_at.isoformat(),
-                    "status": "stored",
-                }
-        except Exception:
-            for row in reversed(self.fallback):
-                if row.get("analysis_id") == analysis_id:
-                    copy = dict(row)
-                    copy["status"] = "fallback"
-                    return copy
-            return None
+        if self._database_enabled():
+            try:
+                session_factory = SessionLocal
+                assert session_factory is not None
+                with session_factory() as session:
+                    record = session.get(AnalysisRecord, analysis_id)
+                    if record is None:
+                        return None
+                    return {
+                        "analysis_id": record.id,
+                        "workspace_id": record.workspace_id,
+                        "text": record.text,
+                        "sentiment": record.sentiment,
+                        "confidence": record.confidence,
+                        "emotion": record.emotion,
+                        "toxicity": record.toxicity,
+                        "sarcasm_hint": record.sarcasm_hint,
+                        "keywords": list(record.keywords or []),
+                        "hashtags": list(record.hashtags or []),
+                        "language": record.language,
+                        "summary": record.summary,
+                        "created_at": record.created_at.isoformat(),
+                        "status": "stored",
+                    }
+            except Exception:
+                pass
+
+        for row in reversed(self.fallback):
+            if row.get("analysis_id") == analysis_id:
+                copy = dict(row)
+                copy["status"] = "fallback"
+                return copy
+        return None
 
     def recent_analyses(self, limit: int = 20) -> list[dict[str, Any]]:
-        try:
-            with SessionLocal() as session:
-                rows = session.scalars(select(AnalysisRecord).order_by(desc(AnalysisRecord.created_at)).limit(limit)).all()
-                return [
-                    {
-                        "id": row.id,
-                        "source": row.workspace_id or "default",
-                        "text": row.text,
-                        "sentiment": row.sentiment,
-                        "confidence": row.confidence,
-                        "keywords": list(row.keywords or []),
-                        "createdAt": _relative_time(row.created_at),
-                        "created_at": row.created_at,
-                    }
-                    for row in rows
-                ]
-        except Exception:
-            return [
-                {
-                    "id": row["analysis_id"],
-                    "source": row.get("workspace_id") or "default",
-                    "text": row["text"],
-                    "sentiment": row["sentiment"],
-                    "confidence": row["confidence"],
-                    "keywords": row.get("keywords", []),
-                    "createdAt": "recent",
-                    "created_at": datetime.now(timezone.utc),
-                }
-                for row in self.fallback[-limit:]
-            ][::-1]
+        if self._database_enabled():
+            try:
+                session_factory = SessionLocal
+                assert session_factory is not None
+                with session_factory() as session:
+                    rows = session.scalars(select(AnalysisRecord).order_by(desc(AnalysisRecord.created_at)).limit(limit)).all()
+                    return [
+                        {
+                            "id": row.id,
+                            "source": row.workspace_id or "default",
+                            "text": row.text,
+                            "sentiment": row.sentiment,
+                            "confidence": row.confidence,
+                            "keywords": list(row.keywords or []),
+                            "createdAt": _relative_time(row.created_at),
+                            "created_at": row.created_at,
+                        }
+                        for row in rows
+                    ]
+            except Exception:
+                pass
+
+        return [
+            {
+                "id": row["analysis_id"],
+                "source": row.get("workspace_id") or "default",
+                "text": row["text"],
+                "sentiment": row["sentiment"],
+                "confidence": row["confidence"],
+                "keywords": row.get("keywords", []),
+                "createdAt": "recent",
+                "created_at": datetime.now(timezone.utc),
+            }
+            for row in self.fallback[-limit:]
+        ][::-1]
 
     def record_api_usage(self, route: str, method: str, status_code: int, latency_ms: int) -> None:
+        if not self._database_enabled():
+            return
+
         try:
-            with SessionLocal() as session:
+            session_factory = SessionLocal
+            assert session_factory is not None
+            with session_factory() as session:
                 session.add(
                     APIUsageEvent(route=route, method=method, status_code=status_code, latency_ms=latency_ms),
                 )
@@ -140,7 +164,7 @@ class AnalysisStore:
                     {"label": "FastAPI", "status": "healthy", "value": "up"},
                     {"label": "Redis cache", "status": "healthy", "value": "connected"},
                     {"label": "Celery workers", "status": "warning", "value": "idle"},
-                    {"label": "PostgreSQL", "status": "healthy", "value": "connected"},
+                    {"label": "Database", "status": "healthy", "value": "connected"},
                 ],
                 "insightSummary": "Run your first analysis to populate intelligence panels.",
             }
@@ -190,7 +214,7 @@ class AnalysisStore:
                 {"label": "FastAPI", "status": "healthy", "value": "99.9%"},
                 {"label": "Redis cache", "status": "healthy", "value": "80% hit"},
                 {"label": "Celery workers", "status": "warning", "value": "1 retry"},
-                {"label": "PostgreSQL", "status": "healthy", "value": "18ms p95"},
+                {"label": "Database", "status": "healthy", "value": "18ms p95"},
             ],
             "insightSummary": (
                 "Positive momentum is leading current channels. "
