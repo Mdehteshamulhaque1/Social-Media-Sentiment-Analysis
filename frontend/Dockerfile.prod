@@ -4,7 +4,7 @@
 # Stage 1: Build
 FROM node:20-alpine AS build
 
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 
 # Install dependencies with frozen lockfile for reproducibility
-RUN npm ci
+RUN npm ci --include=dev
 
 # Copy source code
 COPY frontend ./
