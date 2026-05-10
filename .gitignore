@@ -12,3 +12,6 @@ venv/
 .DS_Store
 npm-debug.log*
 yarn-error.log*
+.env.production
+.dockerignore.enhanced
+sentiment_intelligence_platform.egg-info/
