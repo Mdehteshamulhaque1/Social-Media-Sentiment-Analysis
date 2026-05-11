@@ -1,3 +1,37 @@
+# Sentiment Analysis FastAPI Service
+
+This repository contains a production-ready FastAPI-based backend for sentiment analysis using Hugging Face transformers, PostgreSQL, Redis, Celery, and Docker.
+
+Quick start (local with Docker):
+
+1. Copy `.env.example` to `.env` and update secrets.
+2. Start services:
+
+```bash
+docker-compose -f docker-compose.fastapi.yml up --build
+```
+
+3. The API will be available at `http://localhost:8000` and Swagger UI at `http://localhost:8000/docs`.
+
+Files added (high-level):
+- `backend/fastapi_service/app` - FastAPI application package
+- `backend/fastapi_service/app/main.py` - FastAPI app entry
+- `backend/fastapi_service/app/api/v1/routes.py` - API routes
+- `backend/fastapi_service/app/services` - business logic
+- `backend/fastapi_service/app/models` - SQLAlchemy models
+- `backend/fastapi_service/app/database` - DB session
+- `backend/fastapi_service/app/ml` - Hugging Face model wrapper
+- `backend/fastapi_service/requirements.txt` - Python deps
+- `docker-compose.fastapi.yml` - Compose for DB, Redis, web, worker
+- `.env.example` - env example
+- `.github/workflows/ci.yml` - CI running pytest
+
+Run tests:
+
+```bash
+pip install -r backend/fastapi_service/requirements.txt
+pytest -q
+```
 # Sentiment Intelligence Platform
 
 Production-oriented monorepo for social media sentiment intelligence, built around a FastAPI analytics engine, Django admin/auth orchestration, Redis/Celery background processing, PostgreSQL persistence, and a modern React dashboard.

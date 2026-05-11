@@ -1,3 +1,72 @@
+import logging
+import asyncio
+
+from fastapi import FastAPI, Response, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import Counter, Histogram
+from fastapi.middleware.cors import CORSMiddleware
+
+from .api.routes import routes as api_routes
+from .database.session import engine, Base
+from .core.config import settings
+from .utils.redis_cache import cache
+from .realtime.streamer import get_default_streamer
+from .realtime.ingest import process_streamed_text
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Prometheus metrics
+REQUESTS = Counter("sentiment_requests_total", "Total sentiment requests")
+PREDICTION_LATENCY = Histogram("sentiment_prediction_seconds", "Prediction latency seconds")
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title=settings.PROJECT_NAME)
+    # rate limiter
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(api_routes.router)
+
+    @app.get("/metrics")
+    async def metrics():
+        data = generate_latest()
+        return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
+    @app.on_event("startup")
+    async def on_startup():
+        logger.info("Creating DB tables (if not present)")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        # connect cache
+        try:
+            await cache.connect()
+        except Exception:
+            logger.warning("Could not connect to Redis cache on startup")
+
+        # start dummy streamer for realtime demo
+        try:
+            streamer = get_default_streamer(callback=process_streamed_text)
+            streamer.start()
+            logger.info("Started default dummy streamer for realtime data")
+        except Exception:
+            logger.warning("Failed to start streamer")
+
+    return app
+
+
+app = create_app()
 import os
 
 from fastapi import FastAPI, Request, WebSocket
