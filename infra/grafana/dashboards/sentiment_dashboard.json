@@ -1,0 +1,14 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": null,
+    "title": "Sentiment Overview",
+    "panels": [
+      {
+        "type": "graph",
+        "title": "Sentiment Trends",
+        "targets": []
+      }
+    ]
+  }
+}

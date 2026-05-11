@@ -1,3 +1,26 @@
+from pydantic import BaseSettings
+
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "Sentiment Service"
+    DEBUG: bool = False
+    SECRET_KEY: str = "change-me"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@db:5432/sentiment"
+    REDIS_URL: str = "redis://redis:6379/0"
+
+    CELERY_BROKER_URL: str = "redis://redis:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/2"
+
+    HF_MODEL_NAME: str = "distilbert-base-uncased-finetuned-sst-2-english"
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
 from functools import lru_cache
 from typing import Annotated, Any
 
