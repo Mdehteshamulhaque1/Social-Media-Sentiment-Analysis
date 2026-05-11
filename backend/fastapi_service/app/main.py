@@ -10,7 +10,7 @@ from prometheus_client import Counter, Histogram
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import routes as api_routes
-from .database.session import engine, Base
+from .database import close_db, init_db
 from .core.config import settings
 from .utils.redis_cache import cache
 from .realtime.streamer import get_default_streamer
@@ -46,9 +46,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def on_startup():
-        logger.info("Creating DB tables (if not present)")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Initializing database connection")
+        await init_db()
         # connect cache
         try:
             await cache.connect()
@@ -62,6 +61,10 @@ def create_app() -> FastAPI:
             logger.info("Started default dummy streamer for realtime data")
         except Exception:
             logger.warning("Failed to start streamer")
+
+    @app.on_event("shutdown")
+    async def on_shutdown():
+        await close_db()
 
     return app
 
